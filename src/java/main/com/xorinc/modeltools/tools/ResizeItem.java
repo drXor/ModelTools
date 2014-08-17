@@ -2,6 +2,7 @@ package com.xorinc.modeltools.tools;
 
 import static com.xorinc.modeltools.Main.verbose;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -20,6 +21,8 @@ import org.apache.commons.math3.linear.RealVector;
 
 import com.google.common.collect.ImmutableList;
 import com.google.gson.*;
+import com.xorinc.modeltools.Main;
+import com.xorinc.modeltools.Main.ToolException;
 import com.xorinc.modeltools.Util;
 
 import joptsimple.ValueConversionException;
@@ -29,11 +32,9 @@ import joptsimple.ValueConverter;
 public class ResizeItem implements Tool<ResizeItem> {
 
 	public static final ResizeItem inst = new ResizeItem();
-	
-	private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
-	
+		
 	@Override
-	public void work(InputStream in, OutputStream out, Tool.Args<ResizeItem> args) throws Exception {
+	public void execute(InputStream in, OutputStream out, Tool.Args<ResizeItem> args) throws ToolException {
 
 		Args a = (Args) args;
 		
@@ -74,11 +75,13 @@ public class ResizeItem implements Tool<ResizeItem> {
 				verbose("new scale:" + scale);
 			}
 			
-			String result = gson.toJson(tree);
+			Main.writeFormatted(tree, w);
+		} catch (NullPointerException | ClassCastException e) {
 			
-			result = Util.formatJSON(result);
-							
-			w.append(result);
+			throw new ToolException("Malformed model format!");
+		} catch (IOException e) {
+			
+			throw new ToolException("IOException:" + e.getMessage());
 		}
 	}
 

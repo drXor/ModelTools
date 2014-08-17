@@ -1,5 +1,6 @@
 package com.xorinc.modeltools;
 
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -126,6 +127,16 @@ public class Util {
 		}
 		
 		return index;
+	}
+	
+	public static <T> T getOrElse(T t, Supplier<T> alt){
+		
+		return t == null ? alt.get() : t;
+	}
+	
+	public static <T> T getOrElse(T t, T alt){
+		
+		return getOrElse(t, () -> t);
 	}
 	
 }

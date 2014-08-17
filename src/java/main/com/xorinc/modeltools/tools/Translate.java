@@ -10,41 +10,41 @@ import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
 import java.util.Map.Entry;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import org.apache.commons.math3.linear.ArrayRealVector;
-import org.apache.commons.math3.linear.RealVector;
-
-import com.google.gson.*;
-import com.xorinc.modeltools.Main;
-import com.xorinc.modeltools.Main.ToolException;
-import com.xorinc.modeltools.Util;
 
 import joptsimple.ValueConversionException;
 import joptsimple.ValueConverter;
 
+import org.apache.commons.math3.linear.ArrayRealVector;
+import org.apache.commons.math3.linear.RealVector;
 
-public class Resize implements Tool<Resize> {
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
+import com.xorinc.modeltools.Main;
+import com.xorinc.modeltools.Main.ToolException;
 
-	public static final Resize inst = new Resize();
+
+public class Translate implements Tool<Translate> {
+
+	public static final Translate inst = new Translate();
+	public static final JsonParser jparser = new JsonParser();
 		
 	@Override
-	public void execute(InputStream in, OutputStream out, Tool.Args<Resize> args) throws ToolException {
+	public void execute(InputStream in, OutputStream out, Tool.Args<Translate> args) throws ToolException {
 
 		Args a = (Args) args;
 		
 		try(Reader r = new InputStreamReader(in); Writer w = new OutputStreamWriter(out)) {
-			
-			JsonElement tree = new JsonParser().parse(r);
+						
+			JsonObject tree = new JsonParser().parse(r).getAsJsonObject();
 			
 			verbose(tree);
-			
-			JsonArray elements = tree.getAsJsonObject().getAsJsonArray("elements");
-			
-			for(JsonElement el : elements){
+									
+			tree.getAsJsonArray("elements").forEach(e -> {
 				
-				JsonObject element = el.getAsJsonObject();
+				JsonObject element = e.getAsJsonObject();
 				
 				JsonArray from = element.getAsJsonArray("from");
 				JsonArray to = element.getAsJsonArray("to");
@@ -61,7 +61,9 @@ public class Resize implements Tool<Resize> {
 				double tz = to.get(2).getAsDouble();
 				
 				if(element.get("faces") != null){
-					for(Entry<String, JsonElement> faceE : element.get("faces").getAsJsonObject().entrySet()){
+					JsonObject faces = element.get("faces").getAsJsonObject();
+
+					for(Entry<String, JsonElement> faceE : faces.entrySet()){
 						
 						if(faceE.getValue().getAsJsonObject().get("uv") != null)
 							continue;
@@ -107,9 +109,9 @@ public class Resize implements Tool<Resize> {
 				}
 				
 				RealVector origin = new ArrayRealVector(new double[] {a.originX, a.originY, a.originZ});
-				
-				RealVector newFrom = new ArrayRealVector(new double[] {fx, fy, fz}).subtract(origin).mapMultiplyToSelf(a.magnitude).add(origin);
-				RealVector newTo = new ArrayRealVector(new double[] {tx, ty, tz}).subtract(origin).mapMultiplyToSelf(a.magnitude).add(origin);
+								
+				RealVector newFrom = new ArrayRealVector(new double[] {fx, fy, fz}).add(origin);
+				RealVector newTo = new ArrayRealVector(new double[] {tx, ty, tz}).add(origin);
 				
 				from = new JsonArray();
 				from.add(new JsonPrimitive(newFrom.getEntry(0)));
@@ -137,7 +139,7 @@ public class Resize implements Tool<Resize> {
 					
 					verbose("origin:" + or);
 					
-					RealVector newOr = new ArrayRealVector(new double[] {ox, oy, oz}).subtract(origin).mapMultiplyToSelf(a.magnitude).add(origin);
+					RealVector newOr = new ArrayRealVector(new double[] {ox, oy, oz}).add(origin);
 					
 					or = new JsonArray();
 					or.add(new JsonPrimitive(newOr.getEntry(0)));
@@ -148,9 +150,11 @@ public class Resize implements Tool<Resize> {
 					
 					rotation.add("origin", or);
 				}
-			}
+				
+			});
 			
 			Main.writeFormatted(tree, w);
+			
 		} catch (NullPointerException | ClassCastException e) {
 			
 			throw new ToolException("Malformed model format!");
@@ -158,6 +162,7 @@ public class Resize implements Tool<Resize> {
 			
 			throw new ToolException("IOException:" + e.getMessage());
 		}
+		
 	}
 
 	@Override
@@ -166,12 +171,11 @@ public class Resize implements Tool<Resize> {
 		return parser;
 	}
 
-	public static class Args implements Tool.Args<Resize> {
+	public static class Args implements Tool.Args<Translate> {
 		
-		public final double magnitude, originX, originY, originZ;
+		double originX, originY, originZ;
 		
-		Args(double magnitude, double x, double y, double z){
-			this.magnitude = magnitude;
+		Args(double x, double y, double z){
 			this.originX = x;
 			this.originY = y;
 			this.originZ = z;
@@ -179,38 +183,25 @@ public class Resize implements Tool<Resize> {
 		
 		public String toString() {
 			
-			return String.format("magnitude: %f, origin: [ %f, %f, %f ]", magnitude, originX, originY, originZ);
+			return String.format("[ %f, %f, %f ]", originX, originY, originZ);
 		}
 	}
 	
 	private final ValueConverter<Args> parser = new ValueConverter<Args>() {
-
-		private final int[] defaults = {8, 8, 8};
 		
-		private final String valuePattern = "<magnitude>[;<originx>,<originy>,<originz>]";
-		
-		private final String realPattern = "[0-9]+\\.?[0-9]*|[0-9]*\\.[0-9]+";
-		
-		private final Pattern pattern = Pattern.compile("(" + realPattern + ")(?:;(" + realPattern + "),(" + realPattern + "),(" + realPattern + "))?");
+		private final String valuePattern = "x,y,z";
 		
 		@Override
 		public Args convert(String s) {
 
-			Matcher m = pattern.matcher(s);
-			
-			if(!m.matches()){
-				throw new ValueConversionException("argument does not match expected pattern " + valuePattern);
-			}
-			try {
+			try{
 				
-				double mag = Double.parseDouble(m.group(1));
-				double x = m.group(2) != null ? Double.parseDouble(m.group(2)) : defaults[0];
-				double y = m.group(3) != null ? Double.parseDouble(m.group(3)) : defaults[1];
-				double z = m.group(4) != null ? Double.parseDouble(m.group(4)) : defaults[2];
+				String[] parts = s.split(",");
 				
-				return new Args(mag, x, y, z);
+				return new Args(Double.parseDouble(parts[0]), Double.parseDouble(parts[1]), Double.parseDouble(parts[2]));
 				
-			} catch (Exception e) {
+				
+			} catch(Exception e) {
 				throw new ValueConversionException("error while parsing options", e);
 			}
 		}
@@ -228,5 +219,4 @@ public class Resize implements Tool<Resize> {
 		}
 		
 	};
-	
 }
